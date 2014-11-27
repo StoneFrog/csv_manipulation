@@ -1,0 +1,106 @@
+import numpy as np
+import scipy as sp
+import os, time, datetime
+
+class ImportFile(object):
+#open csv file and creates an array with four columns - id, date, device name and efficiecny. Change usecols to choose other data
+#dict - assign column number to the type of value needed
+
+    def __init__(self):
+        self.column_dict = {'id':0, 'code':1, 'suffix':2, 'time':3, 'description':4, 'size':5, 'beta':6, 'alpha':7, 'mismatchfactor':8, 'ismodule':9, 'cellnumber':10, 'voc':11, 'isc':12, 'impp':13, 'vmpp':14, 'fillfactor':15, 'eta':16, 'r_shunt':17, 'i01_fit':18, 'i02_fit':19, 'n1_fit':20, 'n2_fit':21, 'slope_voc':22, 'module_area':23, 'activecell_area':24, 'strings':25, 'cells_per_string':26, 'module_eta':27, 'curve_type':28, 'rs_fit':29, 'isc_fit':30, 'voc_fit':31, 'fillfactor_fit':32, 'eta_fit':33, 'gsh_fit':34, 'diodemodel':35, 'irradiance':36, 'temperature_before':37, 'temperature_after':38, 'is_stc_corrected':39, 'rawcurve':40, 'curve':41, 'tracer_guid':42, 'user':43, 'impp_fit':44, 'vmpp_fit':45, 'pmpp':46
+        }
+
+
+    def open_csv_file(self, filename):
+        column_names_initial = ['id', 'time', 'cellnumber']
+        answer = raw_input("Do you know the name of column you want? type y or n > ")
+        if answer == 'n':
+            for name in self.column_dict:
+                print name
+        chose_column = raw_input("Which column apart from id, time and cellnumber is most exciting for you?(separate names with just comma, no spaces)> ").split(',')
+        column_numbers = [0,3,10]
+        for element in chose_column:
+            column_numbers.append(self.column_dict[element])
+        entry_data = np.genfromtxt(filename, dtype=None, delimiter=',', skip_header=1, usecols=(column_numbers), invalid_raise=False)                
+        return entry_data, chose_column, column_names_initial
+
+        
+class DataConversion(object):
+#converts date to timestample, changes data type from string to float, for every timestample subtract initial date value 
+
+    def __init__(self):
+        pass
+        
+    def convert_date(self, entry_data):
+        col_2 = entry_data['f1']
+        col_2[:] = [time.mktime(datetime.datetime.strptime(element, '"%Y-%m-%d %H:%M:%S"').timetuple()) for element in col_2[:]]
+        return entry_data
+        
+    def change_date(self, entry_data):
+        dt = entry_data.dtype.descr
+        dt[1] = (dt[1][0], 'float')
+        time_data = entry_data.astype(dt)
+        return time_data
+        
+    def subtract_date(self, time_data):
+        col_2 = time_data['f1']
+        col_2[:] = [element-col_2[0] for element in col_2[:]]
+        return time_data
+
+
+class ListDivision(object):
+#searching when the module number is changing and adds this rownumber to the list, slice list into as many parts as there are modules and assignes names in order as mentioned in FileName class
+    
+    def __init__(self):
+        self.array_dict = {}
+        
+    def find_row_to_slice(self, time_data):
+        col_3 = time_data['f2']
+        slice_number = [0]
+        counter = 0
+        for name_1, name_2 in zip(col_3, col_3[1:]):
+            if name_1.split(':', 1)[0] == name_2.split(':', 1)[0]:
+                counter += 1
+            else:
+                slice_number.append(counter+1)
+                counter += 1                
+        slice_number.append(len(time_data))
+        return time_data, slice_number, col_3
+        
+        
+    def create_new_arrays(self, time_data, slice_number, col_3): 
+        for row_1, row_2 in zip(slice_number, slice_number[1:]):            
+            self.array_dict[col_3[row_1].split(':', 1)[0]] = time_data[row_1:row_2]
+        return self.array_dict
+
+class Main(object):
+#executes all commands, and saves files
+
+    def __init__(self, data_pathname):
+        self.data_pathname = data_pathname
+        self.import_file = ImportFile()
+        self.data_conversion = DataConversion()
+        self.list_division = ListDivision()
+        self.fmt_list = ['%d', '%f', '%s']
+        
+    def save_data(self):
+        import_file = ImportFile()
+        data_conversion = DataConversion()
+        list_division = ListDivision()
+        
+        entry_data, chose_column, column_names_initial = import_file.open_csv_file(self.data_pathname + os.listdir(self.data_pathname)[0])
+        entry_data = data_conversion.convert_date(entry_data)
+        time_data = data_conversion.change_date(entry_data)
+        time_data = data_conversion.subtract_date(time_data)
+        time_data, slice_number, col_3 = list_division.find_row_to_slice(time_data)
+        list_division.create_new_arrays(time_data, slice_number, col_3)        
+        while len(self.fmt_list) != len(chose_column)+3:
+            self.fmt_list.append('%f') 
+        
+        names_column = column_names_initial + chose_column
+        
+        for key in list_division.array_dict:
+            np.savetxt(list(key)[0] + 'odule_' + list(key)[1] + "_" + "_".join(chose_column) + '.csv', list_division.array_dict[key], fmt=self.fmt_list, header=str(', '.join(names_column)), delimiter=',')
+    
+runner = Main('/home/zolw/Documents/python/projects/rera/rera/data/')
+runner.save_data()
